@@ -53,6 +53,21 @@ const COMMENT_BOX_SELECTORS = [
   '.ql-editor[contenteditable="true"]'
 ];
 
+// ─── Safe storage access (falls back to defaults if chrome.storage unavailable) ───
+function safeStorageGet(defaults, callback) {
+  if (chrome?.storage?.sync) {
+    chrome.storage.sync.get(defaults, callback);
+  } else {
+    callback(defaults);
+  }
+}
+
+function safeStorageSet(values) {
+  if (chrome?.storage?.sync) {
+    chrome.storage.sync.set(values);
+  }
+}
+
 // ─── State ───
 let currentOverlay = null;
 
@@ -155,7 +170,7 @@ function onGenieClick(postEl) {
   showModal(postEl, { loading: true });
 
   // Get tone preference then call background worker
-  chrome.storage.sync.get({ tone: 'tony' }, (settings) => {
+  safeStorageGet({ tone: 'default' }, (settings) => {
     const payload = {
       postText: data.postText.substring(0, 3000),
       comments: data.comments.slice(0, 10),
@@ -228,7 +243,7 @@ function showModal(postEl, state) {
   modal.appendChild(toneBar);
 
   // Set current tone
-  chrome.storage.sync.get({ tone: 'tony' }, (settings) => {
+  safeStorageGet({ tone: 'default' }, (settings) => {
     const select = document.getElementById('genie-tone');
     if (select) select.value = settings.tone;
   });
@@ -249,7 +264,7 @@ function showModal(postEl, state) {
   // Tone change handler
   document.getElementById('genie-tone').addEventListener('change', (e) => {
     const newTone = e.target.value;
-    chrome.storage.sync.set({ tone: newTone });
+    safeStorageSet({ tone: newTone });
 
     // Re-generate with new tone
     updateModal({ loading: true });
