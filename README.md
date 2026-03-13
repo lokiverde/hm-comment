@@ -1,5 +1,14 @@
 # HM Comment - AI-Powered LinkedIn Comment Generator
 
+[![Deploy Landing Page](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/lokiverde/hm-comment&root-directory=landing-page)
+
+## Quick Deploy
+- **Landing Page:** Click the button above to deploy to Vercel
+- **Chrome Extension:** See `chrome-extension/` folder  
+- **Store Assets:** See `chrome-store/` folder
+
+---
+
 A Chrome extension + n8n workflow that generates smart, context-aware LinkedIn comment suggestions. Click the **HM** button on any LinkedIn post and get 3 tailored comment options you can insert with one click.
 
 ![Chrome Extension](https://img.shields.io/badge/Chrome-Extension-blue) ![n8n](https://img.shields.io/badge/n8n-Workflow-orange) ![AI](https://img.shields.io/badge/AI-OpenRouter-green)
