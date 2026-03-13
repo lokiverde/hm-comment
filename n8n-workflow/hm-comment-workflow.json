@@ -1,0 +1,301 @@
+{
+  "name": "HM Comment - LinkedIn Comment Generator",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "hm-comment",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-1088, 1808],
+      "webhookId": "hm-comment",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "prep-postText",
+              "name": "postText",
+              "value": "={{ $json.body.postText ? $json.body.postText.substring(0, 3000) : '' }}",
+              "type": "string"
+            },
+            {
+              "id": "prep-comments",
+              "name": "commentsText",
+              "value": "={{ $json.body.comments ? $json.body.comments.slice(0, 10).join('\\n---\\n') : 'No existing comments' }}",
+              "type": "string"
+            },
+            {
+              "id": "prep-authorName",
+              "name": "authorName",
+              "value": "={{ $json.body.authorName || 'Unknown' }}",
+              "type": "string"
+            },
+            {
+              "id": "prep-postType",
+              "name": "postType",
+              "value": "={{ $json.body.postType || 'text' }}",
+              "type": "string"
+            },
+            {
+              "id": "prep-tone",
+              "name": "tone",
+              "value": "={{ $json.body.tone || 'default' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-prep",
+      "name": "Prep Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-880, 1808]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "tone-default",
+              "leftValue": "={{ $json.tone }}",
+              "rightValue": "default",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-tone",
+      "name": "Is Default Tone?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-736, 1808]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Generate 3 LinkedIn comment suggestions for this post.\n\nPOST BY: {{ $json.authorName }}\nPOST TYPE: {{ $json.postType }}\n\nPOST TEXT:\n{{ $json.postText }}\n\nEXISTING COMMENTS (for context, do not repeat these ideas):\n{{ $json.commentsText }}\n\nRequirements:\n- Comment 1: Short (3-8 words), punchy and impactful\n- Comment 2: Medium (2 sentences max), affirms the post's key point and adds a brief personal insight or observation\n- Comment 3: Mid-length (2-4 sentences), different angle - could be personal experience, humor if appropriate, or a contrarian take\n\nReturn ONLY valid JSON with no other text:\n{\"comments\": [{\"text\": \"...\", \"type\": \"short\"}, {\"text\": \"...\", \"type\": \"mid\"}, {\"text\": \"...\", \"type\": \"mid\"}]}",
+        "options": {
+          "systemMessage": "You are a LinkedIn comment assistant. You write comments that match an authentic, personal voice.\n\nYOUR TONE OF VOICE:\n- Use relatable and conversational language. Make readers feel understood and connected.\n- Use motivational and empowering words: freedom, success, control, empowerment.\n- Use personal anecdotes and relatable storytelling to illustrate points.\n- Use direct, confident language. Be assertive, avoid tentative language.\n- Incorporate rhetorical questions to provoke thought.\n- Apply a conversational tone that directly addresses people. Use you and your.\n- Use active voice for clarity and directness.\n- Be honest and candid. Don't sugarcoat realities.\n- Use first-person narrative and personal stories for authenticity.\n- Keep vocabulary simple and accessible. Avoid jargon.\n- Use encouraging phrases that empower.\n- Sparingly use figurative language for impact, not decoration.\n- Maintain positivity and optimism to inspire confidence.\n\nIMPORTANT RULES:\n- Never use hashtags\n- Never use generic phrases like Great post! or Thanks for sharing!\n- Never start with I - vary your openings\n- Each comment must add genuine value to the conversation\n- Reference specific points from the post\n- Be authentic, not salesy\n- Never use em-dashes",
+          "maxIterations": 1
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [-464, 1680],
+      "id": "agent-default",
+      "name": "AI Agent - Default Voice"
+    },
+    {
+      "parameters": {
+        "model": "anthropic/claude-haiku-4.5",
+        "options": {
+          "maxTokens": 1024,
+          "temperature": 0.8
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [-464, 1840],
+      "id": "openrouter-default",
+      "name": "OpenRouter Chat Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Generate 3 LinkedIn comment suggestions for this post.\nUse the {{ $json.tone }} tone.\n\nPOST BY: {{ $json.authorName }}\nPOST TYPE: {{ $json.postType }}\n\nPOST TEXT:\n{{ $json.postText }}\n\nEXISTING COMMENTS (for context, do not repeat these ideas):\n{{ $json.commentsText }}\n\nRequirements:\n- Comment 1: Short (3-8 words), punchy and impactful\n- Comment 2: Medium (2 sentences max), affirms the post's key point and adds a brief personal insight or observation\n- Comment 3: Mid-length (2-4 sentences), different angle - could be personal experience, humor if appropriate, or a contrarian take\n\nReturn ONLY valid JSON with no other text:\n{\"comments\": [{\"text\": \"...\", \"type\": \"short\"}, {\"text\": \"...\", \"type\": \"mid\"}, {\"text\": \"...\", \"type\": \"mid\"}]}",
+        "options": {
+          "systemMessage": "You are a LinkedIn comment assistant. Adapt your style based on the requested tone.\n\nWhen tone is hormozi:\n- Use a mix of simple, conversational words and business terminology\n- Be direct and colloquial: gonna, suck at it, casual contractions\n- Use active voice almost exclusively for directness\n- Employ metaphors sparingly but powerfully\n- Ask rhetorical questions to engage readers\n- Use short, punchy sentences for impact mixed with longer explanatory ones\n- Include personal anecdotes and specific examples\n- Maintain a casual but authoritative tone\n- Use occasional hyperbole for emphasis\n- Be assertive and confident in word choice\n- Use humor and light sarcasm where appropriate\n\nWhen tone is professional:\n- Use polished, business-appropriate language\n- Reference industry trends and data\n- Maintain warmth but stay formal\n- Focus on strategic insights\n\nWhen tone is casual:\n- Ultra-conversational, like texting a friend\n- Use emoji sparingly (1-2 max)\n- Short sentences, relatable language\n- Focus on human connection\n\nIMPORTANT RULES:\n- Never use hashtags\n- Never use generic phrases like Great post! or Thanks for sharing!\n- Never start with I - vary your openings\n- Each comment must add genuine value\n- Reference specific points from the post\n- Be authentic, not salesy\n- Never use em-dashes",
+          "maxIterations": 1
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [-512, 2032],
+      "id": "agent-other",
+      "name": "AI Agent - Other Tones"
+    },
+    {
+      "parameters": {
+        "model": "anthropic/claude-haiku-4.5",
+        "options": {
+          "maxTokens": 1024,
+          "temperature": 0.8
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [-608, 2144],
+      "id": "openrouter-other",
+      "name": "OpenRouter Chat Model1",
+      "credentials": {
+        "openRouterApi": {
+          "id": "",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse AI Agent response and format for the extension\nconst input = $input.first().json;\n\ntry {\n  // AI Agent returns { output: '...' } with the text response\n  let rawText = '';\n  \n  if (input.output) {\n    rawText = input.output;\n  } else if (input.text) {\n    rawText = input.text;\n  } else if (typeof input === 'string') {\n    rawText = input;\n  } else {\n    // Search all string properties for JSON\n    for (const key of Object.keys(input)) {\n      const val = input[key];\n      if (typeof val === 'string' && val.includes('comments')) {\n        rawText = val;\n        break;\n      }\n    }\n    if (!rawText) rawText = JSON.stringify(input);\n  }\n  \n  // Extract JSON from the response\n  const jsonMatch = rawText.match(/\\{[\\s\\S]*\\}/);\n  if (!jsonMatch) {\n    throw new Error('No JSON found in AI response: ' + rawText.substring(0, 200));\n  }\n  \n  const parsed = JSON.parse(jsonMatch[0]);\n  const comments = parsed.comments || parsed.data;\n  \n  if (!Array.isArray(comments) || comments.length === 0) {\n    throw new Error('Invalid comments array in response');\n  }\n  \n  const formatted = comments.map((c, i) => ({\n    text: c.text || c.content || String(c),\n    type: c.type || (i === 0 ? 'short' : 'mid')\n  }));\n  \n  return [{\n    json: {\n      success: true,\n      data: formatted,\n      error: null\n    }\n  }];\n} catch (e) {\n  return [{\n    json: {\n      success: false,\n      data: null,\n      error: 'Failed to parse AI response: ' + e.message\n    }\n  }];\n}"
+      },
+      "id": "code-format",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-176, 1840]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [0, 1888]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Prep Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Data": {
+      "main": [
+        [
+          {
+            "node": "Is Default Tone?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Default Tone?": {
+      "main": [
+        [
+          {
+            "node": "AI Agent - Default Voice",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent - Other Tones",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent - Default Voice",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent - Default Voice": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent - Other Tones",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent - Other Tones": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    { "name": "LinkedIn" },
+    { "name": "AI" },
+    { "name": "Chrome Extension" }
+  ]
+}

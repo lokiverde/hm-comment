@@ -1,0 +1,270 @@
+/* HM Comment - Chrome Extension Styles */
+
+/* ===== Genie Button (per-post) ===== */
+.genie-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: 'Avenir', -apple-system, BlinkMacSystemFont, sans-serif;
+  color: rgba(0, 0, 0, 0.6);
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.genie-btn:hover {
+  background-color: rgba(0, 115, 177, 0.08);
+  color: #0073b1;
+}
+
+.genie-btn .genie-icon {
+  font-size: 16px;
+}
+
+.genie-btn .genie-label {
+  font-weight: 600;
+}
+
+/* ===== Modal Overlay ===== */
+.genie-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 9999;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* ===== Modal Container ===== */
+.genie-modal {
+  position: relative;
+  width: 380px;
+  max-height: 80vh;
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: 'Avenir', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* ===== Modal Header ===== */
+.genie-header {
+  width: 100%;
+  padding: 16px 20px;
+  background: linear-gradient(-45deg, #1a3a5c, #0073b1, #1a3a5c, #0073b1);
+  background-size: 400% 400%;
+  animation: genieGradient 5s ease infinite;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.genie-header-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: bold;
+  color: #ffffff;
+}
+
+.genie-close-btn {
+  width: 28px;
+  height: 28px;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: background-color 0.2s;
+}
+
+.genie-close-btn:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+/* ===== Tone Selector ===== */
+.genie-tone-bar {
+  padding: 12px 20px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.genie-tone-label {
+  font-size: 12px;
+  color: #666;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.genie-tone-select {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #333;
+  background: #f9f9f9;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.genie-tone-select:focus {
+  border-color: #0073b1;
+}
+
+/* ===== Modal Body (scrollable) ===== */
+.genie-body {
+  padding: 16px 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* ===== Loading Spinner ===== */
+.genie-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 40px 0;
+}
+
+.genie-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f0f0f0;
+  border-top: 4px solid #0073b1;
+  border-radius: 50%;
+  animation: genieSpin 0.8s linear infinite;
+}
+
+.genie-loading-text {
+  font-size: 13px;
+  color: #888;
+}
+
+/* ===== Comment Suggestion Buttons ===== */
+.genie-suggestion {
+  display: block;
+  width: 100%;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  background: #fff;
+  color: #333;
+  border: 1px solid #e0e0e0;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  font-family: inherit;
+  text-align: left;
+  line-height: 1.45;
+  transition: background-color 0.15s, border-color 0.15s, transform 0.15s;
+}
+
+.genie-suggestion:last-child {
+  margin-bottom: 0;
+}
+
+.genie-suggestion:hover {
+  background-color: #f0f8ff;
+  border-color: #b0d4f1;
+  transform: scale(1.01);
+}
+
+.genie-suggestion-type {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #0073b1;
+  margin-bottom: 4px;
+}
+
+/* ===== Error State ===== */
+.genie-error {
+  text-align: center;
+  padding: 24px 0;
+}
+
+.genie-error-text {
+  font-size: 14px;
+  color: #d32f2f;
+  margin-bottom: 12px;
+}
+
+.genie-retry-btn {
+  padding: 8px 20px;
+  background: #0073b1;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.genie-retry-btn:hover {
+  background: #005f8f;
+}
+
+/* ===== Success Message ===== */
+.genie-success {
+  text-align: center;
+  padding: 16px 0;
+  font-size: 14px;
+  color: #2e7d32;
+}
+
+/* ===== Confetti ===== */
+.genie-confetti-piece {
+  position: fixed;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  top: -10px;
+  z-index: 10001;
+  animation: genieFall linear forwards;
+  pointer-events: none;
+}
+
+/* ===== Keyframes ===== */
+@keyframes genieGradient {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes genieSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes genieFall {
+  to {
+    transform: translateY(100vh) rotate(720deg);
+    opacity: 0;
+  }
+}
