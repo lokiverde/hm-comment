@@ -2,99 +2,130 @@
  * HM Comment - Content Script
  * Injects an HM Comment button on each LinkedIn post for AI-powered comment generation.
  * Communicates with background.js service worker for n8n API calls.
+ *
+ * Updated 2026-03-25: LinkedIn moved to hashed/obfuscated class names.
+ * All selectors now use role attributes, aria-labels, and structural navigation.
  */
 
 console.log('HM Comment content script loaded');
 
-// ─── Post selectors (multiple fallbacks for LinkedIn DOM changes) ───
-const POST_SELECTORS = [
-  '.feed-shared-update-v2',
-  '[data-urn^="urn:li:activity"]',
-  '.occludable-update'
-];
-
-const POST_TEXT_SELECTORS = [
-  '.feed-shared-update-v2__commentary .break-words',
-  '.feed-shared-update-v2__commentary',
-  '.feed-shared-text .break-words',
-  '.feed-shared-text',
-  '.update-components-text .break-words',
-  '.update-components-text'
-];
-
-const COMMENT_TEXT_SELECTORS = [
-  '.comments-comment-item__main-content',
-  '.comments-comment-texteditor__content'
-];
-
-const ACTION_BAR_SELECTORS = [
-  '.feed-shared-social-actions',
-  '.social-details-social-actions',
-  '.feed-shared-social-action-bar'
-];
-
-const AUTHOR_NAME_SELECTORS = [
-  '.update-components-actor__name .visually-hidden',
-  '.update-components-actor__name',
-  '.feed-shared-actor__name .visually-hidden',
-  '.feed-shared-actor__name'
-];
-
-const COMMENT_BUTTON_SELECTORS = [
-  'button[aria-label*="Comment"]',
-  'button[aria-label*="comment"]',
-  '.comment-button',
-  'button.feed-shared-social-action-bar__action-btn:nth-child(2)'
-];
-
-const COMMENT_BOX_SELECTORS = [
-  '.comments-comment-texteditor [contenteditable="true"]',
-  '.comments-comment-box [contenteditable="true"]',
-  '.ql-editor[contenteditable="true"]'
-];
-
-// ─── Safe storage access (falls back to defaults if chrome.storage unavailable) ───
-function safeStorageGet(defaults, callback) {
-  if (chrome?.storage?.sync) {
-    chrome.storage.sync.get(defaults, callback);
-  } else {
-    callback(defaults);
-  }
-}
-
-function safeStorageSet(values) {
-  if (chrome?.storage?.sync) {
-    chrome.storage.sync.set(values);
-  }
-}
+// ─── Post selectors (role-based, stable across LinkedIn deploys) ───
+const POST_SELECTOR = '[role="listitem"]';
+const FEED_SELECTOR = '[role="list"]';
 
 // ─── State ───
 let currentOverlay = null;
 
-// ─── Utility: query with fallback selectors ───
-function queryWithFallbacks(root, selectors) {
-  for (const sel of selectors) {
-    const el = root.querySelector(sel);
-    if (el) return el;
+// ─── Find all post elements on the page ───
+function findPostElements() {
+  // Find all listitems, then filter to only those that contain a post
+  // (have a control menu button or a Comment button)
+  const allItems = document.querySelectorAll(POST_SELECTOR);
+  const posts = [];
+  for (const item of allItems) {
+    const hasMenu = item.querySelector('button[aria-label^="Open control menu for post"]');
+    if (hasMenu) posts.push(item);
+  }
+  return posts;
+}
+
+// ─── Find the Comment button inside a post (no aria-label, text match only) ───
+function findCommentButton(postEl) {
+  const buttons = postEl.querySelectorAll('button');
+  for (const btn of buttons) {
+    const text = btn.textContent.trim();
+    if (text === 'Comment') return btn;
+  }
+  // Fallback: aria-label based (in case LinkedIn adds it back)
+  return postEl.querySelector('button[aria-label*="Comment" i]');
+}
+
+// ─── Find the action bar (parent container of Like/Comment/Repost buttons) ───
+function findActionBar(postEl) {
+  const commentBtn = findCommentButton(postEl);
+  if (commentBtn) {
+    // Walk up to find the bar containing all action buttons.
+    // The action bar is typically 2-3 levels up from the Comment button.
+    let bar = commentBtn.parentElement;
+    while (bar && bar !== postEl) {
+      // The action bar is the div that contains both Like and Comment buttons
+      const hasLike = bar.querySelector('button[aria-label^="Reaction button"]');
+      const hasComment = findCommentButton(bar);
+      if (hasLike && hasComment) return bar;
+      bar = bar.parentElement;
+    }
+    // Fallback: return the immediate parent of the comment button
+    return commentBtn.parentElement;
   }
   return null;
 }
 
-function queryAllWithFallbacks(root, selectors) {
-  for (const sel of selectors) {
-    const els = root.querySelectorAll(sel);
-    if (els.length > 0) return els;
+// ─── Extract author name from control menu button aria-label ───
+function extractAuthorName(postEl) {
+  const menuBtn = postEl.querySelector('button[aria-label^="Open control menu for post by"]');
+  if (menuBtn) {
+    return menuBtn.getAttribute('aria-label').replace('Open control menu for post by ', '').trim();
   }
-  return [];
+  return '';
 }
 
-// ─── Find all post elements on the page ───
-function findPostElements() {
-  for (const sel of POST_SELECTORS) {
-    const posts = document.querySelectorAll(sel);
-    if (posts.length > 0) return Array.from(posts);
+// ─── Extract post text ───
+function extractPostText(postEl) {
+  // Strategy 1: Find the longest <p> or <span> with substantial text inside the post.
+  // LinkedIn puts post text in a <p> tag or nested spans.
+  // Skip buttons, the author section, and social counts.
+  let bestText = '';
+
+  // Check all <p> elements
+  const paragraphs = postEl.querySelectorAll('p');
+  for (const p of paragraphs) {
+    const t = p.innerText.trim();
+    if (t.length > bestText.length) bestText = t;
   }
-  return [];
+
+  // If no <p> found, try <span> elements with substantial text
+  if (!bestText) {
+    const spans = postEl.querySelectorAll('span');
+    for (const span of spans) {
+      const t = span.innerText.trim();
+      // Skip short text (buttons, counts, etc.)
+      if (t.length > 50 && t.length > bestText.length) bestText = t;
+    }
+  }
+
+  return bestText;
+}
+
+// ─── Detect post type ───
+function detectPostType(postEl) {
+  if (postEl.querySelector('video')) return 'video';
+  // Check for article links (LinkedIn articles have external link previews)
+  const links = postEl.querySelectorAll('a[href*="linkedin.com/pulse"], a[href*="linkedin.com/news"]');
+  if (links.length > 0) return 'article';
+  // Check for images (skip profile pics and icons by requiring reasonable size)
+  const images = postEl.querySelectorAll('img');
+  for (const img of images) {
+    if (img.naturalWidth > 200 || img.width > 200) return 'image';
+  }
+  return 'text';
+}
+
+// ─── Extract data from a specific post ───
+function extractPostData(postEl) {
+  const postText = extractPostText(postEl);
+  const authorName = extractAuthorName(postEl);
+  const postType = detectPostType(postEl);
+
+  // Existing comments (look for contenteditable or comment text areas)
+  const comments = [];
+  // Comments may not be visible until expanded, so this may return empty
+  const commentEls = postEl.querySelectorAll('[aria-label*="comment" i] span, [role="article"] span');
+  commentEls.forEach(el => {
+    const text = el.innerText.trim();
+    if (text && text.length > 10) comments.push(text);
+  });
+
+  return { postText, authorName, comments, postType };
 }
 
 // ─── Inject HM Comment button on a single post ───
@@ -102,7 +133,7 @@ function injectGenieButton(postEl) {
   if (postEl.dataset.genieInjected === 'true') return;
   postEl.dataset.genieInjected = 'true';
 
-  const actionBar = queryWithFallbacks(postEl, ACTION_BAR_SELECTORS);
+  const actionBar = findActionBar(postEl);
   if (!actionBar) {
     // Non-critical: some posts (ads, promoted) don't have action bars
     return;
@@ -110,7 +141,7 @@ function injectGenieButton(postEl) {
 
   const btn = document.createElement('button');
   btn.className = 'genie-btn';
-  btn.innerHTML = '<span class="genie-icon">💬</span><span class="genie-label">HM</span>';
+  btn.innerHTML = '<span class="genie-icon">\ud83d\udcac</span><span class="genie-label">HM</span>';
   btn.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -118,40 +149,6 @@ function injectGenieButton(postEl) {
   });
 
   actionBar.appendChild(btn);
-}
-
-// ─── Extract data from a specific post ───
-function extractPostData(postEl) {
-  // Post text
-  let postText = '';
-  const textEl = queryWithFallbacks(postEl, POST_TEXT_SELECTORS);
-  if (textEl) {
-    postText = textEl.innerText.trim();
-  }
-
-  // Author name
-  let authorName = '';
-  const authorEl = queryWithFallbacks(postEl, AUTHOR_NAME_SELECTORS);
-  if (authorEl) {
-    authorName = authorEl.innerText.trim();
-  }
-
-  // Existing comments
-  const comments = [];
-  const commentEls = queryAllWithFallbacks(postEl, COMMENT_TEXT_SELECTORS);
-  commentEls.forEach(el => {
-    const text = el.innerText.trim();
-    if (text) comments.push(text);
-  });
-
-  // Post type detection
-  let postType = 'text';
-  if (postEl.querySelector('.feed-shared-article')) postType = 'article';
-  else if (postEl.querySelector('.feed-shared-image')) postType = 'image';
-  else if (postEl.querySelector('video, .feed-shared-linkedin-video')) postType = 'video';
-  else if (postEl.querySelector('.feed-shared-mini-update')) postType = 'reshare';
-
-  return { postText, authorName, comments, postType };
 }
 
 // ─── Handle HM Comment button click ───
@@ -170,7 +167,7 @@ function onGenieClick(postEl) {
   showModal(postEl, { loading: true });
 
   // Get tone preference then call background worker
-  safeStorageGet({ tone: 'default' }, (settings) => {
+  chrome.storage.sync.get({ tone: 'default' }, (settings) => {
     const payload = {
       postText: data.postText.substring(0, 3000),
       comments: data.comments.slice(0, 10),
@@ -196,7 +193,8 @@ function onGenieClick(postEl) {
           updateModal({
             error: true,
             message: response?.error || 'Failed to generate comments. Check your n8n webhook.',
-            retryPayload: payload
+            retryPayload: payload,
+            postEl
           });
         }
       }
@@ -224,7 +222,7 @@ function showModal(postEl, state) {
   header.className = 'genie-header';
   header.innerHTML = `
     <h3 class="genie-header-title">HM Comment</h3>
-    <button class="genie-close-btn" id="genie-close">✕</button>
+    <button class="genie-close-btn" id="genie-close">\u2715</button>
   `;
   modal.appendChild(header);
 
@@ -234,7 +232,7 @@ function showModal(postEl, state) {
   toneBar.innerHTML = `
     <span class="genie-tone-label">TONE</span>
     <select class="genie-tone-select" id="genie-tone">
-      <option value="tony">Tony's Voice</option>
+      <option value="default">Default Voice</option>
       <option value="hormozi">Hormozi Style</option>
       <option value="professional">Professional</option>
       <option value="casual">Casual</option>
@@ -243,7 +241,7 @@ function showModal(postEl, state) {
   modal.appendChild(toneBar);
 
   // Set current tone
-  safeStorageGet({ tone: 'default' }, (settings) => {
+  chrome.storage.sync.get({ tone: 'default' }, (settings) => {
     const select = document.getElementById('genie-tone');
     if (select) select.value = settings.tone;
   });
@@ -261,10 +259,19 @@ function showModal(postEl, state) {
   // Close button
   document.getElementById('genie-close').addEventListener('click', closeModal);
 
+  // Escape key handler
+  const escHandler = (e) => {
+    if (e.key === 'Escape') {
+      closeModal();
+      document.removeEventListener('keydown', escHandler);
+    }
+  };
+  document.addEventListener('keydown', escHandler);
+
   // Tone change handler
   document.getElementById('genie-tone').addEventListener('change', (e) => {
     const newTone = e.target.value;
-    safeStorageSet({ tone: newTone });
+    chrome.storage.sync.set({ tone: newTone });
 
     // Re-generate with new tone
     updateModal({ loading: true });
@@ -286,7 +293,8 @@ function showModal(postEl, state) {
           updateModal({
             error: true,
             message: response?.error || 'Failed to generate comments.',
-            retryPayload: payload
+            retryPayload: payload,
+            postEl
           });
         }
       }
@@ -320,7 +328,12 @@ function updateModal(state) {
   if (state.error) {
     const errorDiv = document.createElement('div');
     errorDiv.className = 'genie-error';
-    errorDiv.innerHTML = `<div class="genie-error-text">${state.message}</div>`;
+
+    // Use textContent to prevent XSS from webhook responses
+    const errorText = document.createElement('div');
+    errorText.className = 'genie-error-text';
+    errorText.textContent = state.message;
+    errorDiv.appendChild(errorText);
 
     if (state.retryPayload) {
       const retryBtn = document.createElement('button');
@@ -337,7 +350,8 @@ function updateModal(state) {
               updateModal({
                 error: true,
                 message: response?.error || 'Still failing. Check n8n webhook.',
-                retryPayload: state.retryPayload
+                retryPayload: state.retryPayload,
+                postEl: state.postEl
               });
             }
           }
@@ -375,9 +389,13 @@ function updateModal(state) {
 
 // ─── Close Modal ───
 function closeModal() {
+  if (currentOverlay) {
+    currentOverlay.remove();
+    currentOverlay = null;
+    return;
+  }
   const overlay = document.getElementById('genie-overlay');
   if (overlay) overlay.remove();
-  currentOverlay = null;
 }
 
 // ─── Insert Comment into LinkedIn ───
@@ -388,61 +406,87 @@ async function insertComment(postEl, text) {
   }
 
   // Step 1: Click LinkedIn's Comment button to expand comment section
-  const commentBtn = queryWithFallbacks(postEl, COMMENT_BUTTON_SELECTORS);
+  const commentBtn = findCommentButton(postEl);
   if (commentBtn) {
     commentBtn.click();
   }
 
-  // Step 2: Wait for comment box to appear (scoped to this post)
-  const commentBox = await waitForElement(postEl, COMMENT_BOX_SELECTORS, 3000);
+  // Step 2: Wait for comment box to appear
+  const commentBox = await waitForCommentBox(postEl, 4000);
 
   if (commentBox) {
-    // Focus and insert using execCommand for LinkedIn's state to recognize it
     commentBox.focus();
-
-    // Clear any existing content
     commentBox.innerHTML = '';
 
-    // Use execCommand so LinkedIn's internal editor state updates
-    document.execCommand('insertText', false, text);
+    // Try modern InputEvent approach first, fall back to execCommand
+    try {
+      const inputEvent = new InputEvent('beforeinput', {
+        inputType: 'insertText',
+        data: text,
+        bubbles: true,
+        cancelable: true,
+        composed: true
+      });
+      commentBox.dispatchEvent(inputEvent);
 
-    // Dispatch input event as backup
+      // Check if it worked (LinkedIn's editor may not respond to beforeinput)
+      if (!commentBox.textContent.trim()) {
+        // Fallback to execCommand
+        document.execCommand('insertText', false, text);
+      }
+    } catch (e) {
+      // Fallback to execCommand
+      document.execCommand('insertText', false, text);
+    }
+
+    // Dispatch input event for LinkedIn's state tracking
     commentBox.dispatchEvent(new Event('input', { bubbles: true }));
 
     closeModal();
-    console.log('HM Comment: Comment inserted successfully');
   } else {
-    // Fallback: try document-wide
-    const fallbackBox = document.querySelector('[contenteditable="true"].ql-editor') ||
-                        document.querySelector('.comments-comment-texteditor [contenteditable="true"]');
-    if (fallbackBox) {
-      fallbackBox.focus();
-      fallbackBox.innerHTML = '';
-      document.execCommand('insertText', false, text);
-      fallbackBox.dispatchEvent(new Event('input', { bubbles: true }));
-      closeModal();
-    } else {
-      // Copy to clipboard as last resort
-      navigator.clipboard.writeText(text).then(() => {
-        updateModal({
-          error: true,
-          message: 'Could not find the comment box. The comment has been copied to your clipboard - paste it manually.'
-        });
-      }).catch(() => {
-        updateModal({
-          error: true,
-          message: 'Could not find the comment box. Try clicking Comment on the post first, then use HM Comment.'
-        });
+    // Copy to clipboard as last resort
+    navigator.clipboard.writeText(text).then(() => {
+      updateModal({
+        error: true,
+        message: 'Could not find the comment box. The comment has been copied to your clipboard. Paste it manually.'
       });
-    }
+    }).catch(() => {
+      updateModal({
+        error: true,
+        message: 'Could not find the comment box. Try clicking Comment on the post first, then use HM Comment.'
+      });
+    });
   }
 }
 
-// ─── Wait for element to appear in DOM ───
-function waitForElement(root, selectors, timeout = 3000) {
+// ─── Wait for comment box to appear after clicking Comment ───
+function waitForCommentBox(postEl, timeout = 4000) {
   return new Promise((resolve) => {
-    // Check immediately
-    const existing = queryWithFallbacks(root, selectors);
+    const check = () => {
+      // Look for contenteditable inside or near the post
+      const box = postEl.querySelector('[contenteditable="true"]');
+      if (box) return box;
+
+      // LinkedIn may render the comment box outside the listitem,
+      // so also check the next sibling or nearby elements
+      const nextSibling = postEl.nextElementSibling;
+      if (nextSibling) {
+        const siblingBox = nextSibling.querySelector('[contenteditable="true"]');
+        if (siblingBox) return siblingBox;
+      }
+
+      // Fallback: look for any recently-appeared contenteditable near the bottom of the viewport
+      const allEditable = document.querySelectorAll('[contenteditable="true"]');
+      for (const el of allEditable) {
+        // Skip the main post composer at the top
+        if (el.closest('[role="main"]') && !el.closest(POST_SELECTOR)) continue;
+        if (el.offsetHeight > 0 && el.offsetWidth > 0) return el;
+      }
+
+      return null;
+    };
+
+    const existing = check();
     if (existing) {
       resolve(existing);
       return;
@@ -452,7 +496,7 @@ function waitForElement(root, selectors, timeout = 3000) {
     let elapsed = 0;
     const timer = setInterval(() => {
       elapsed += interval;
-      const el = queryWithFallbacks(root, selectors);
+      const el = check();
       if (el) {
         clearInterval(timer);
         resolve(el);
@@ -471,25 +515,15 @@ function observeFeed() {
   posts.forEach(injectGenieButton);
 
   // Watch for new posts loaded via infinite scroll
-  const observer = new MutationObserver((mutations) => {
-    for (const mutation of mutations) {
-      for (const node of mutation.addedNodes) {
-        if (node.nodeType !== Node.ELEMENT_NODE) continue;
-
-        // Check if the added node itself is a post
-        for (const sel of POST_SELECTORS) {
-          if (node.matches && node.matches(sel)) {
-            injectGenieButton(node);
-          }
-        }
-
-        // Check children of the added node
-        if (node.querySelectorAll) {
-          const childPosts = findPostsIn(node);
-          childPosts.forEach(injectGenieButton);
-        }
-      }
-    }
+  const observer = new MutationObserver(() => {
+    // Debounce: batch DOM changes
+    if (observer._pending) return;
+    observer._pending = true;
+    requestAnimationFrame(() => {
+      observer._pending = false;
+      const posts = findPostElements();
+      posts.forEach(injectGenieButton);
+    });
   });
 
   observer.observe(document.body, {
@@ -500,28 +534,19 @@ function observeFeed() {
   return observer;
 }
 
-function findPostsIn(root) {
-  const results = [];
-  for (const sel of POST_SELECTORS) {
-    root.querySelectorAll(sel).forEach(el => results.push(el));
-    if (results.length > 0) return results;
-  }
-  return results;
-}
-
 // ─── Initialize ───
 function init() {
   console.log('HM Comment: Initializing...');
 
-  // Wait a moment for LinkedIn to render
+  // Wait for LinkedIn to render the feed
   setTimeout(() => {
     observeFeed();
-    console.log('HM Comment: Ready.');
+    console.log('HM Comment: Ready. Found', findPostElements().length, 'posts.');
   }, 1500);
 
   // Re-scan on URL changes (LinkedIn is a SPA)
   let lastUrl = window.location.href;
-  const urlObserver = new MutationObserver(() => {
+  const checkUrl = () => {
     if (window.location.href !== lastUrl) {
       lastUrl = window.location.href;
       console.log('HM Comment: URL changed, re-scanning...');
@@ -530,8 +555,13 @@ function init() {
         posts.forEach(injectGenieButton);
       }, 2000);
     }
-  });
+  };
 
+  // Use popstate for back/forward navigation
+  window.addEventListener('popstate', checkUrl);
+
+  // Use a single observer for pushState/replaceState URL changes
+  const urlObserver = new MutationObserver(checkUrl);
   urlObserver.observe(document.body, { childList: true, subtree: true });
 }
 

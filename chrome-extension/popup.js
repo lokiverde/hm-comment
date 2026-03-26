@@ -3,6 +3,7 @@
  * Manages webhook URL and default tone preferences.
  */
 
+// IMPORTANT: Update this to YOUR n8n webhook URL after importing the workflow
 const DEFAULT_WEBHOOK_URL = 'https://your-n8n-instance.com/webhook/hm-comment';
 
 const toneSelect = document.getElementById('tone');
